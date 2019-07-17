@@ -1,0 +1,135 @@
+version: '3.5'
+
+services:
+  grafana:
+    image: grafana/grafana:${GRAFANA_VERSION}
+    container_name: grafana
+    labels:
+      traefik.enable: true
+      traefik.backend: grafana
+      traefik.frontend.rule: 'Host:grafana.${DOMAIN}'
+      traefik.port: '3000'
+      traefik.frontend.passHostHeader: 'true'
+      traefik.frontend.rateLimit.extractorFunc: 'client.ip'
+      traefik.frontend.rateLimit.rateSet.first.period: '60s'
+      traefik.frontend.rateLimit.rateSet.first.average: '100'
+      traefik.frontend.rateLimit.rateSet.first.burst: '200'
+    environment:
+      GF_SERVER_ROOT_URL: 'http://grafana.${DOMAIN}'
+      GF_SECURITY_ADMIN_PASSWORD: '${GRAFANA_DASHBOARD_PWD}'
+    volumes:
+    - '${PWD}/grafana:/var/lib/grafana'
+    user: ${CURRENT_UID}
+    healthcheck:
+      test: ["CMD", "curl", "http://localhost:3000/api/health"]
+      retries: 5
+    restart: on-failure:5
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+
+  prometheus:
+    image: prom/prometheus:${PROMETHEUS_VERSION}
+    container_name: prometheus
+    command:
+    - --config.file=/prometheus-data/prometheus.yml
+    - --log.level=debug
+    labels:
+      traefik.enable: true
+      traefik.backend: prometheus
+      traefik.frontend.rule: 'Host:prometheus.${DOMAIN}'
+      traefik.frontend.auth.basic: '${MONITOR_BASICAUTH}'
+      traefik.port: '9090'
+      traefik.frontend.passHostHeader: 'true'
+      traefik.frontend.rateLimit.extractorFunc: 'client.ip'
+      traefik.frontend.rateLimit.rateSet.first.period: '60s'
+      traefik.frontend.rateLimit.rateSet.first.average: '100'
+      traefik.frontend.rateLimit.rateSet.first.burst: '200'
+    volumes:
+    - '${PWD}/prometheus/prometheus.yml:/prometheus-data/prometheus.yml:ro'
+    - '${PWD}/prometheus/alert.rules:/prometheus-data/alert.rules:ro'
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/status"]
+      retries: 5
+    restart: on-failure:5
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+
+  jaeger:
+    image: jaegertracing/all-in-one:${JAEGER_VERSION}
+    container_name: jaeger
+    labels:
+      traefik.enable: true
+      traefik.backend: jaeger
+      traefik.frontend.rule: 'Host:jaeger.${DOMAIN}'
+      traefik.frontend.auth.basic: '${MONITOR_BASICAUTH}'
+      traefik.port: '16686'
+      traefik.frontend.passHostHeader: 'true'
+      traefik.frontend.rateLimit.extractorFunc: 'client.ip'
+      traefik.frontend.rateLimit.rateSet.first.period: '60s'
+      traefik.frontend.rateLimit.rateSet.first.average: '100'
+      traefik.frontend.rateLimit.rateSet.first.burst: '200'
+    ports:
+      - "16687:16686"
+    restart: on-failure:5
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+    
+
+  node-exporter:
+    image: prom/node-exporter:${NODEEXPORTER_VERSION} 
+    container_name: node-exporter
+    labels:
+      traefik.enable: false
+    ports:
+      - 9100:9100
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+
+  cadvisor:
+    image: google/cadvisor:${CADVISOR_VERSION}
+    container_name: cadvisor
+    labels:
+      traefik.enable: false
+    expose:
+      - 8080
+    ports:
+      - "8888:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      #- /cgroup:/cgroup:ro #doesn't work on MacOS only for Linux
+    restart: unless-stopped
+
+
+  alertmanager:
+    image: prom/alertmanager:${ALERTMANAGER_VERSION}
+    container_name: alertmanager
+    labels:
+      traefik.enable: false
+    ports:
+      - "9093:9093"
+    expose:
+      - 9093
+    volumes:
+      - ./alertmanager/:/etc/alertmanager/
+    command:
+      - '--config.file=/etc/alertmanager/config.yml'
+      - '--storage.path=/alertmanager'
+    restart: unless-stopped
+    
+
+networks:
+  default:
+    external:
+      name: traefik
