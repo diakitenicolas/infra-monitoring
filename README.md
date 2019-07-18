@@ -9,7 +9,7 @@ docker network create traefik
 ```
 
 
-* Create User for prometheus/alermanager Dashboard 
+* Create User for prometheus Dashboard 
 ```
 htpasswd -nb monitor changeme
 
