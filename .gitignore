@@ -1,5 +1,5 @@
 *.env
-/plugins/
+*/plugins/
 /png/
 grafana.db
 .DS_Store
